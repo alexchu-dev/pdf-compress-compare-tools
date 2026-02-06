@@ -1,0 +1,7 @@
+pypdf>=4.0.0
+# Optional for visual PDF comparison (renders PDF pages as images)
+# pymupdf>=1.23.0
+# Pillow>=10.0.0
+
+# For building standalone executables
+pyinstaller>=6.0.0
