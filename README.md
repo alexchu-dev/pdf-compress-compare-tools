@@ -1,14 +1,18 @@
 # PDF Tools
 
-A Python toolkit for working with PDF files - compress and compare PDFs with ease.
+These PDF Tools are created using vibe coding with Claude Opus 4.5.
+
+Don't want to pay for PDF compression and comparison? Scared of downloading free tools with malware? Follow this guide and build your own PDF compress/ compare tool with Python for both Windows and Mac OS platform.
 
 ## Features
 
 ### PDF Compression
+- **GUI Interface**: User-friendly graphical interface for compression
 - **Multiple compression backends**: Uses Ghostscript for best compression, falls back to PyPDF
 - **Quality presets**: Choose from screen, ebook, printer, or prepress quality
 - **Batch processing**: Compress multiple PDF files at once
 - **Replace mode**: Option to replace original files with compressed versions
+- **Progress tracking**: Real-time progress bar and detailed logs
 
 ### PDF Comparison
 - **GUI Interface**: User-friendly graphical interface for comparing PDFs
@@ -42,7 +46,27 @@ Download from https://ghostscript.com/releases/gsdnld.html
 
 ## Usage
 
-### Basic usage
+### GUI Mode (Recommended for most users)
+
+Launch the graphical interface:
+```bash
+python compress_pdf.py
+```
+
+Or explicitly:
+```bash
+python compress_pdf.py --gui
+```
+
+The GUI allows you to:
+- Add multiple files or entire folders
+- Choose quality presets with radio buttons
+- See real-time progress and compression statistics
+- View detailed logs for each file
+
+### Command Line Usage
+
+#### Basic usage
 
 Compress a single PDF (creates `filename_compressed.pdf`):
 ```bash
@@ -171,23 +195,45 @@ You can create standalone executables for users who don't have Python installed.
 pip install pyinstaller
 ```
 
-### Build Command
+### Build Commands
 
+Build both tools at once:
 ```bash
 python build.py
 ```
 
-Or manually:
+Or build individually:
 ```bash
-pyinstaller --onefile --windowed --name PDFCompare compare_pdf.py
+python build.py --compress   # Build only PDFCompress
+python build.py --compare    # Build only PDFCompare
 ```
 
-The executable will be created in `dist/PDFCompare` (or `dist/PDFCompare.exe` on Windows).
+### Output Files
+
+| Platform | PDFCompress | PDFCompare |
+|----------|-------------|------------|
+| **macOS** | `dist/PDFCompress.app` | `dist/PDFCompare.app` |
+| **Windows** | `dist/PDFCompress.exe` | `dist/PDFCompare.exe` |
+| **Linux** | `dist/pdfcompress` | `dist/pdfcompare` |
+
+### Creating DMG Installers (macOS)
+
+To create `.dmg` installers for easy distribution:
+
+```bash
+# Install create-dmg
+brew install create-dmg
+
+# Create DMG files
+create-dmg dist/PDFCompress.app dist/
+create-dmg dist/PDFCompare.app dist/
+```
 
 ### Cross-Platform Notes
 
 - PyInstaller builds for the **current OS only**
 - To create a Windows `.exe`, run the build on a Windows machine
+- To create a macOS `.app`, run the build on a Mac
 - Consider using GitHub Actions for automated multi-platform builds
 
 ---
