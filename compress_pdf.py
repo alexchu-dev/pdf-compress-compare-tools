@@ -26,7 +26,7 @@ def compress_with_ghostscript(
     input_path: str,
     output_path: str,
     quality: str = "ebook"
-) -> bool:
+) -> tuple[bool, Optional[str]]:
     """
     Compress PDF using Ghostscript.
     
@@ -35,16 +35,37 @@ def compress_with_ghostscript(
     - ebook: medium quality, good for reading (150 dpi)
     - printer: high quality (300 dpi)
     - prepress: highest quality, largest size (300 dpi, color preserving)
+    
+    Returns:
+        Tuple of (success, error_message)
     """
     # Check if ghostscript is available
+    # Include common installation paths for bundled apps that don't inherit PATH
     gs_cmd = None
+    
+    # First try standard PATH lookup
     for cmd in ["gs", "gswin64c", "gswin32c"]:
         if shutil.which(cmd):
             gs_cmd = cmd
             break
     
+    # If not found, try common installation paths (for bundled macOS/Linux apps)
     if not gs_cmd:
-        return False
+        common_paths = [
+            "/opt/homebrew/bin/gs",      # macOS Homebrew (Apple Silicon)
+            "/usr/local/bin/gs",          # macOS Homebrew (Intel) / Linux
+            "/usr/bin/gs",                # Linux system install
+            "/opt/local/bin/gs",          # MacPorts
+            "C:\\Program Files\\gs\\gs10.02.1\\bin\\gswin64c.exe",  # Windows
+            "C:\\Program Files (x86)\\gs\\gs10.02.1\\bin\\gswin32c.exe",
+        ]
+        for path in common_paths:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                gs_cmd = path
+                break
+    
+    if not gs_cmd:
+        return False, "Ghostscript not found. Install it for better compression."
     
     quality_settings = {
         "screen": "/screen",
@@ -76,18 +97,22 @@ def compress_with_ghostscript(
             check=True,
             capture_output=True,
         )
-        return True
+        return True, None
     except subprocess.CalledProcessError as e:
-        print(f"Ghostscript error: {e.stderr.decode()}", file=sys.stderr)
-        return False
+        error_msg = e.stderr.decode() if e.stderr else str(e)
+        print(f"Ghostscript error: {error_msg}", file=sys.stderr)
+        return False, f"Ghostscript error: {error_msg}"
 
 
-def compress_with_pypdf(input_path: str, output_path: str) -> bool:
+def compress_with_pypdf(input_path: str, output_path: str) -> tuple[bool, Optional[str]]:
     """
     Compress PDF using PyPDF library.
     
     This provides basic compression by removing redundant objects
     and compressing streams.
+    
+    Returns:
+        Tuple of (success, error_message)
     """
     try:
         from pypdf import PdfReader, PdfWriter
@@ -95,9 +120,9 @@ def compress_with_pypdf(input_path: str, output_path: str) -> bool:
         try:
             from PyPDF2 import PdfReader, PdfWriter
         except ImportError:
-            print("Neither pypdf nor PyPDF2 is installed.", file=sys.stderr)
-            print("Install with: pip install pypdf", file=sys.stderr)
-            return False
+            error_msg = "Neither pypdf nor PyPDF2 is installed. Install with: pip install pypdf"
+            print(error_msg, file=sys.stderr)
+            return False, error_msg
     
     try:
         reader = PdfReader(input_path)
@@ -115,10 +140,11 @@ def compress_with_pypdf(input_path: str, output_path: str) -> bool:
         with open(output_path, "wb") as output_file:
             writer.write(output_file)
         
-        return True
+        return True, None
     except Exception as e:
-        print(f"PyPDF error: {e}", file=sys.stderr)
-        return False
+        error_msg = f"PyPDF error: {e}"
+        print(error_msg, file=sys.stderr)
+        return False, error_msg
 
 
 def compress_pdf(
@@ -161,18 +187,25 @@ def compress_pdf(
     
     success = False
     method = ""
+    last_error = ""
     
     if not force_pypdf:
         print("Attempting compression with Ghostscript...")
-        success = compress_with_ghostscript(input_path, output_path, quality)
-        if success:
+        gs_success, gs_error = compress_with_ghostscript(input_path, output_path, quality)
+        if gs_success:
+            success = True
             method = "Ghostscript"
+        else:
+            last_error = gs_error or "Ghostscript not available"
     
     if not success:
         print("Attempting compression with PyPDF...")
-        success = compress_with_pypdf(input_path, output_path)
-        if success:
+        pypdf_success, pypdf_error = compress_with_pypdf(input_path, output_path)
+        if pypdf_success:
+            success = True
             method = "PyPDF"
+        else:
+            last_error = pypdf_error or "PyPDF compression failed"
     
     if success and os.path.exists(output_path):
         compressed_size = get_file_size_mb(output_path)
@@ -187,10 +220,10 @@ def compress_pdf(
             print("\n⚠ Warning: Compressed file is not smaller than original.")
             print("  The original PDF may already be well-optimized.")
         
-        return True, output_path
+        return True, output_path, None
     else:
-        print("\n✗ Compression failed.", file=sys.stderr)
-        return False, ""
+        print(f"\n✗ Compression failed: {last_error}", file=sys.stderr)
+        return False, "", last_error
 
 
 class PDFCompressGUI:
@@ -285,7 +318,7 @@ class PDFCompressGUI:
         self.progress_label.pack(anchor=tk.W)
         
         # Log text
-        self.log_text = tk.Text(progress_frame, height=8, font=("Courier", 9), state=tk.DISABLED)
+        self.log_text = tk.Text(progress_frame, height=10, font=("Courier", 13), state=tk.DISABLED)
         log_scroll = ttk.Scrollbar(progress_frame, orient=tk.VERTICAL, command=self.log_text.yview)
         self.log_text.configure(yscrollcommand=log_scroll.set)
         
@@ -395,14 +428,14 @@ class PDFCompressGUI:
             try:
                 if replace:
                     temp_output = filepath + ".tmp"
-                    success, output_path = compress_pdf(filepath, temp_output, quality, force_pypdf)
+                    success, output_path, error_msg = compress_pdf(filepath, temp_output, quality, force_pypdf)
                     if success:
                         os.replace(temp_output, filepath)
                         output_path = filepath
                 else:
                     base, ext = os.path.splitext(filepath)
                     output_path = f"{base}_compressed{ext}"
-                    success, output_path = compress_pdf(filepath, output_path, quality, force_pypdf)
+                    success, output_path, error_msg = compress_pdf(filepath, output_path, quality, force_pypdf)
                 
                 if success and os.path.exists(output_path):
                     compressed_size = get_file_size_mb(output_path)
@@ -412,7 +445,8 @@ class PDFCompressGUI:
                     self.root.after(0, lambda f=filename, r=reduction: self._log(f"✓ {f}: {r:.1f}% reduction", "success"))
                     success_count += 1
                 else:
-                    self.root.after(0, lambda f=filename: self._log(f"✗ {f}: Compression failed", "error"))
+                    error_display = error_msg if error_msg else "Unknown error"
+                    self.root.after(0, lambda f=filename, e=error_display: self._log(f"✗ {f}: {e}", "error"))
                     fail_count += 1
                     
             except Exception as e:
@@ -529,7 +563,7 @@ Examples:
         if args.replace:
             # Compress to temp file, then replace original
             temp_output = str(input_path.with_suffix(".pdf.tmp"))
-            success, _ = compress_pdf(
+            success, _, error_msg = compress_pdf(
                 str(input_path),
                 temp_output,
                 args.quality,
@@ -544,7 +578,7 @@ Examples:
                     os.remove(temp_output)
                 fail_count += 1
         else:
-            success, _ = compress_pdf(
+            success, _, error_msg = compress_pdf(
                 str(input_path),
                 output_path,
                 args.quality,
